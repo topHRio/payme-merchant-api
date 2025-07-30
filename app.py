@@ -4,7 +4,7 @@ import uuid
 
 app = Flask(__name__)
 
-MERCHANT_KEY = "test"
+MERCHANT_KEY = "MgQkrp%EmzazcRq5GWp#KxiTQgYu1@Ymrs87"
 transactions = {}
 
 ERRORS = {
