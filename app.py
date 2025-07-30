@@ -1,77 +1,109 @@
-
 from flask import Flask, request, jsonify
-import os
+from datetime import datetime
+import uuid
 
 app = Flask(__name__)
 
-PROMO_CODES = {
-    "JULY20": 0.20,
-    "HR50": 0.50
+MERCHANT_KEY = "test"
+transactions = {}
+
+ERRORS = {
+    'AUTH': {'code': -32504, 'message': "Недостаточно привилегий для выполнения метода."},
+    'ORDER_NOT_FOUND': {'code': -31050, 'message': {"ru": "Заказ не найден", "uz": "Buyurtma topilmadi", "en": "Order not found"}},
+    'ALREADY_PAID': {'code': -31099, 'message': {"ru": "Платеж на этот заказ на данный момент уже осуществляется", "uz": "Buyurtma to'lovi hozirda amalga oshirilmoqda", "en": "Order payment is already being processed"}},
+    'INVALID_AMOUNT': {'code': -31001, 'message': {"ru": "Неверная сумма", "uz": "Noto'g'ri summa", "en": "Invalid amount"}},
 }
 
-FULL_PRICE = 6_000_000
+@app.before_request
+def check_auth():
+    auth = request.headers.get("Authorization")
+    if not auth or auth != f"Bearer {MERCHANT_KEY}":
+        return jsonify({"error": ERRORS['AUTH']}), 401
 
-@app.route("/payme/init", methods=["POST"])
-def init_payment():
-    data = request.json
-    name = data.get("name")
-    phone = data.get("phone")
-    promo = data.get("promo", "").upper()
-    half_payment = data.get("half_payment", False)
+@app.route("/", methods=["POST"])
+def index():
+    data = request.get_json()
+    method = data.get("method")
+    params = data.get("params", {})
 
-    discount = PROMO_CODES.get(promo, 0)
-    price = FULL_PRICE * (1 - discount)
+    if method == "CheckPerformTransaction":
+        return check_perform(params, data.get("id"))
+    elif method == "CreateTransaction":
+        return create_transaction(params, data.get("id"))
+    elif method == "PerformTransaction":
+        return perform_transaction(params, data.get("id"))
+    elif method == "CancelTransaction":
+        return cancel_transaction(params, data.get("id"))
+    elif method == "CheckTransaction":
+        return check_transaction(params, data.get("id"))
+    elif method == "GetStatement":
+        return get_statement(params, data.get("id"))
+    elif method == "ChangePassword":
+        return change_password(params, data.get("id"))
+    else:
+        return jsonify({"error": {"code": -32601, "message": "Method not found"}})
 
-    if half_payment:
-        price = price / 2
+def check_perform(params, req_id):
+    account = params.get("account", {}).get("account")
+    amount = params.get("amount")
+    if account != "7":
+        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
+    if amount != 56000:
+        return jsonify({"id": req_id, "error": ERRORS['INVALID_AMOUNT']})
+    return jsonify({"id": req_id, "result": {"allow": True}})
 
-    order_id = f"JHR-{phone[-4:]}-{os.urandom(3).hex()}"
+def create_transaction(params, req_id):
+    trans_id = params.get("id")
+    account = params.get("account", {}).get("account")
+    amount = params.get("amount")
 
-    response = {
-        "order_id": order_id,
-        "amount": int(price * 100),
-        "message": f"Оплата {'в 2 этапа' if half_payment else 'полная'} за курс Junior HR. Промокод: {promo or 'нет'}"
+    if trans_id in transactions:
+        return jsonify({"id": req_id, "result": transactions[trans_id]})
+
+    if account != "7":
+        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
+    if amount != 56000:
+        return jsonify({"id": req_id, "error": ERRORS['INVALID_AMOUNT']})
+
+    transaction_data = {
+        "create_time": int(datetime.now().timestamp() * 1000),
+        "transaction": str(uuid.uuid4()),
+        "state": 1
     }
-    return jsonify(response)
+    transactions[trans_id] = transaction_data
+    return jsonify({"id": req_id, "result": transaction_data})
 
-@app.route("/payme/check", methods=["POST"])
-def check_transaction():
-    req = request.json
-    order_id = req["params"]["account"]["order_id"]
-    amount = req["params"]["amount"]
+def perform_transaction(params, req_id):
+    trans_id = params.get("id")
+    if trans_id not in transactions:
+        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
 
-    return jsonify({
-        "result": {
-            "allow": True,
-            "detail": {
-                "receipt_type": 0,
-                "items": [{
-                    "title": "Junior HR kursi",
-                    "price": amount,
-                    "count": 1,
-                    "code": "10899002001000000",
-                    "vat_percent": 0,
-                    "package_code": "123456"
-                }]
-            }
-        }
-    })
+    transactions[trans_id]["state"] = 2
+    transactions[trans_id]["perform_time"] = int(datetime.now().timestamp() * 1000)
+    return jsonify({"id": req_id, "result": transactions[trans_id]})
 
-@app.route("/payme/create", methods=["POST"])
-def create_transaction():
-    return jsonify({"result": {"create_time": int(os.urandom(2).hex(), 16)}})
+def cancel_transaction(params, req_id):
+    trans_id = params.get("id")
+    reason = params.get("reason", 0)
+    if trans_id not in transactions:
+        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
 
-@app.route("/payme/perform", methods=["POST"])
-def perform_transaction():
-    return jsonify({"result": {"perform_time": int(os.urandom(2).hex(), 16)}})
+    transactions[trans_id]["state"] = -2
+    transactions[trans_id]["cancel_time"] = int(datetime.now().timestamp() * 1000)
+    transactions[trans_id]["reason"] = reason
+    return jsonify({"id": req_id, "result": transactions[trans_id]})
 
-@app.route("/payme/cancel", methods=["POST"])
-def cancel_transaction():
-    return jsonify({"result": {"cancel_time": int(os.urandom(2).hex(), 16)}})
+def check_transaction(params, req_id):
+    trans_id = params.get("id")
+    if trans_id not in transactions:
+        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
+    return jsonify({"id": req_id, "result": transactions[trans_id]})
 
-@app.route("/payme/checkstatus", methods=["POST"])
-def check_transaction_status():
-    return jsonify({"result": {"status": 1}})
+def get_statement(params, req_id):
+    return jsonify({"id": req_id, "result": list(transactions.values())})
+
+def change_password(params, req_id):
+    return jsonify({"id": req_id, "result": {"success": True}})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(debug=True)
