@@ -186,13 +186,24 @@ def perform_transaction(_id, params):
 
     # Если уже выполнена
     if transaction["state"] == 2:
-        return jsonify({"id": _id, "result": transaction})
+        return jsonify({
+            "id": _id,
+            "result": {
+                "transaction": trans_id,
+                **transaction
+            }
+        })
 
     # Выполняем
     transaction["perform_time"] = get_now_timestamp()
     transaction["state"] = 2
-    return jsonify({"id": _id, "result": transaction})
-
+    return jsonify({
+        "id": _id,
+        "result": {
+            "transaction": trans_id,
+            **transaction
+        }
+    })
 
 def cancel_transaction(_id, params):
     trans_id = params.get("id")
