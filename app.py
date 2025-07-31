@@ -1,112 +1,149 @@
 from flask import Flask, request, jsonify
-from datetime import datetime
-import uuid
+import base64
+import datetime
 
 app = Flask(__name__)
 
-MERCHANT_KEY = "MgQkrp%EmzazcRq5GWp#KxiTQgYu1@Ymrs87"
-transactions = {}
+MERCHANT_ID = "6888b945cab302211ad14048"
+TEST_KEY = "MgQkrp%EmzazcRq5GWp#KxiTQgYu1@Ymrs87"
+AUTH_HEADER = "Basic " + base64.b64encode(f"{MERCHANT_ID}:{TEST_KEY}".encode()).decode()
 
-ERRORS = {
-    'AUTH': {'code': -32504, 'message': "Недостаточно привилегий для выполнения метода."},
-    'ORDER_NOT_FOUND': {'code': -31050, 'message': {"ru": "Заказ не найден", "uz": "Buyurtma topilmadi", "en": "Order not found"}},
-    'ALREADY_PAID': {'code': -31099, 'message': {"ru": "Платеж на этот заказ на данный момент уже осуществляется", "uz": "Buyurtma to'lovi hozirda amalga oshirilmoqda", "en": "Order payment is already being processed"}},
-    'INVALID_AMOUNT': {'code': -31001, 'message': {"ru": "Неверная сумма", "uz": "Noto'g'ri summa", "en": "Invalid amount"}},
+COURSES = {
+    "HRSTR": 3_000_000,
+    "HRFIN": 3_000_000,
+    "HRAN":  3_000_000,
+    "SENHR": 8_000_000
 }
 
-@app.before_request
-def check_auth():
-    auth = request.headers.get("Authorization")
-    if not auth or auth != f"Bearer {MERCHANT_KEY}":
-        return jsonify({"error": ERRORS['AUTH']}), 401
+transactions = {}
+
+def get_now_timestamp():
+    return int(datetime.datetime.now().timestamp() * 1000)
 
 @app.route("/", methods=["POST"])
-def index():
+def merchant_api():
+    auth = request.headers.get("Authorization")
+    if auth != AUTH_HEADER:
+        return jsonify({"error": {"code": -32504, "message": {"ru": "Неверная авторизация"}}})
+
     data = request.get_json()
     method = data.get("method")
     params = data.get("params", {})
+    _id = data.get("id")
 
     if method == "CheckPerformTransaction":
-        return check_perform(params, data.get("id"))
+        return check_perform_transaction(_id, params)
     elif method == "CreateTransaction":
-        return create_transaction(params, data.get("id"))
+        return create_transaction(_id, params)
     elif method == "PerformTransaction":
-        return perform_transaction(params, data.get("id"))
+        return perform_transaction(_id, params)
     elif method == "CancelTransaction":
-        return cancel_transaction(params, data.get("id"))
+        return cancel_transaction(_id, params)
     elif method == "CheckTransaction":
-        return check_transaction(params, data.get("id"))
+        return check_transaction(_id, params)
     elif method == "GetStatement":
-        return get_statement(params, data.get("id"))
-    elif method == "ChangePassword":
-        return change_password(params, data.get("id"))
+        return get_statement(_id, params)
     else:
-        return jsonify({"error": {"code": -32601, "message": "Method not found"}})
+        return jsonify({"id": _id, "error": {"code": -32601, "message": {"ru": "Метод не найден"}}})
 
-def check_perform(params, req_id):
-    account = params.get("account", {}).get("account")
+def check_perform_transaction(_id, params):
+    account = params.get("account", {})
+    order_id = account.get("order_id")
     amount = params.get("amount")
-    if account != "7":
-        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
-    if amount != 56000:
-        return jsonify({"id": req_id, "error": ERRORS['INVALID_AMOUNT']})
-    return jsonify({"id": req_id, "result": {"allow": True}})
 
-def create_transaction(params, req_id):
+    if not order_id or not any(order_id.startswith(key) for key in COURSES):
+        return jsonify({"id": _id, "error": {"code": -31050, "message": {"ru": "Неверный order_id"}}})
+
+    course_key = order_id[:5]
+    expected_amount = COURSES[course_key] * 100
+    if amount != expected_amount:
+        return jsonify({"id": _id, "error": {"code": -31001, "message": {"ru": "Сумма не совпадает"}}})
+
+    receipt_detail = {
+        "receipt_type": 0,
+        "items": [
+            {
+                "title": {
+                    "HRSTR": "HR стратегия",
+                    "HRFIN": "HR финансы",
+                    "HRAN": "HR аналитика",
+                    "SENHR": "Senior HR"
+                }.get(course_key, "Курс TOP HR"),
+                "price": expected_amount,
+                "count": 1,
+                "code": "10899002001000000",
+                "vat_percent": 0,
+                "package_code": ""
+            }
+        ]
+    }
+
+    return jsonify({"id": _id, "result": {"allow": True, "detail": receipt_detail}})
+
+def create_transaction(_id, params):
     trans_id = params.get("id")
-    account = params.get("account", {}).get("account")
+    time = params.get("time")
+    account = params.get("account", {})
+    order_id = account.get("order_id")
     amount = params.get("amount")
 
     if trans_id in transactions:
-        return jsonify({"id": req_id, "result": transactions[trans_id]})
+        return jsonify({"id": _id, "result": transactions[trans_id]})
 
-    if account != "7":
-        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
-    if amount != 56000:
-        return jsonify({"id": req_id, "error": ERRORS['INVALID_AMOUNT']})
-
-    transaction_data = {
-        "create_time": int(datetime.now().timestamp() * 1000),
-        "transaction": str(uuid.uuid4()),
-        "state": 1
+    transactions[trans_id] = {
+        "create_time": time,
+        "perform_time": 0,
+        "cancel_time": 0,
+        "id": trans_id,
+        "state": 1,
+        "reason": None,
+        "amount": amount,
+        "account": account
     }
-    transactions[trans_id] = transaction_data
-    return jsonify({"id": req_id, "result": transaction_data})
+    return jsonify({"id": _id, "result": transactions[trans_id]})
 
-def perform_transaction(params, req_id):
+def perform_transaction(_id, params):
     trans_id = params.get("id")
-    if trans_id not in transactions:
-        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
+    transaction = transactions.get(trans_id)
 
-    transactions[trans_id]["state"] = 2
-    transactions[trans_id]["perform_time"] = int(datetime.now().timestamp() * 1000)
-    return jsonify({"id": req_id, "result": transactions[trans_id]})
+    if not transaction:
+        return jsonify({"id": _id, "error": {"code": -31003, "message": {"ru": "Транзакция не найдена"}}})
 
-def cancel_transaction(params, req_id):
+    if transaction["state"] == 2:
+        return jsonify({"id": _id, "result": transaction})
+
+    transaction["perform_time"] = get_now_timestamp()
+    transaction["state"] = 2
+    return jsonify({"id": _id, "result": transaction})
+
+def cancel_transaction(_id, params):
     trans_id = params.get("id")
-    reason = params.get("reason", 0)
-    if trans_id not in transactions:
-        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
+    reason = params.get("reason")
+    transaction = transactions.get(trans_id)
 
-    transactions[trans_id]["state"] = -2
-    transactions[trans_id]["cancel_time"] = int(datetime.now().timestamp() * 1000)
-    transactions[trans_id]["reason"] = reason
-    return jsonify({"id": req_id, "result": transactions[trans_id]})
+    if not transaction:
+        return jsonify({"id": _id, "error": {"code": -31003, "message": {"ru": "Транзакция не найдена"}}})
 
-def check_transaction(params, req_id):
+    transaction["cancel_time"] = get_now_timestamp()
+    transaction["state"] = -1
+    transaction["reason"] = reason
+    return jsonify({"id": _id, "result": transaction})
+
+def check_transaction(_id, params):
     trans_id = params.get("id")
-    if trans_id not in transactions:
-        return jsonify({"id": req_id, "error": ERRORS['ORDER_NOT_FOUND']})
-    return jsonify({"id": req_id, "result": transactions[trans_id]})
+    transaction = transactions.get(trans_id)
 
-def get_statement(params, req_id):
-    return jsonify({"id": req_id, "result": list(transactions.values())})
+    if not transaction:
+        return jsonify({"id": _id, "error": {"code": -31003, "message": {"ru": "Транзакция не найдена"}}})
 
-def change_password(params, req_id):
-    return jsonify({"id": req_id, "result": {"success": True}})
+    return jsonify({"id": _id, "result": transaction})
 
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+def get_statement(_id, params):
+    from_time = params.get("from")
+    to_time = params.get("to")
 
+    filtered = [
+        tx for tx in transactions.values()
+        if from_time <= int(tx["create_time"]) <= to_time
+    ]
+    return jsonify({"id": _id, "result": filtered})
