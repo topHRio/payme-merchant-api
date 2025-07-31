@@ -11,7 +11,7 @@ TEST_KEY = "MgQkrp%EmzazcRq5GWp#KxiTQgYu1@Ymrs87"
 COURSES = {
     "HRSTR": 3_000_000,
     "HRFIN": 3_000_000,
-    "HRAN":  3_000_000,
+    "HRANA":  3_000_000,
     "SENHR": 8_000_000
 }
 
