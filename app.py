@@ -24,7 +24,17 @@ def get_now_timestamp():
 def merchant_api():
     auth = request.headers.get("Authorization")
     if auth != AUTH_HEADER:
-        return jsonify({"error": {"code": -32504, "message": {"ru": "Неверная авторизация"}}})
+        return jsonify({
+    "error": {
+        "code": -32504,
+        "message": {
+            "ru": "Неверная авторизация",
+            "uz": "Noto‘g‘ri avtorizatsiya",
+            "en": "Invalid authorization"
+        }
+    }
+})
+
 
     data = request.get_json()
     method = data.get("method")
