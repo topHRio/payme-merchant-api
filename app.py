@@ -103,7 +103,7 @@ def check_perform_transaction(_id, params):
             "title": {
                 "HRSTR": "HR стратегия",
                 "HRFIN": "HR финансы",
-                "HRAN": "HR аналитика",
+                "HRANA": "HR аналитика",
                 "SENHR": "Senior HR"
             }.get(course_key, "Курс TOP HR"),
             "price": expected_amount,
@@ -153,23 +153,46 @@ def create_transaction(_id, params):
     }
     return jsonify({"id": _id, "result": transactions[trans_id]})
 
-
 def perform_transaction(_id, params):
     trans_id = params.get("id")
     transaction = transactions.get(trans_id)
 
     if not transaction:
-        return jsonify({"id": _id, "error": {"code": -31003, "message": {
-            "ru": "Транзакция не найдена",
-            "uz": "Tranzaksiya topilmadi",
-            "en": "Transaction not found"}}})
+        return jsonify({
+            "id": _id,
+            "error": {
+                "code": -31003,
+                "message": {
+                    "ru": "Транзакция не найдена",
+                    "uz": "Tranzaksiya topilmadi",
+                    "en": "Transaction not found"
+                }
+            }
+        })
 
+    # Если уже отменена
+    if transaction["state"] == -1:
+        return jsonify({
+            "id": _id,
+            "error": {
+                "code": -31008,
+                "message": {
+                    "ru": "Транзакция отменена",
+                    "uz": "Tranzaksiya bekor qilingan",
+                    "en": "Transaction cancelled"
+                }
+            }
+        })
+
+    # Если уже выполнена
     if transaction["state"] == 2:
         return jsonify({"id": _id, "result": transaction})
 
+    # Выполняем
     transaction["perform_time"] = get_now_timestamp()
     transaction["state"] = 2
     return jsonify({"id": _id, "result": transaction})
+
 
 def cancel_transaction(_id, params):
     trans_id = params.get("id")
