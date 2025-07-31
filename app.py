@@ -120,7 +120,23 @@ def create_transaction(_id, params):
     trans_id = params.get("id")
     time = params.get("time")
     account = params.get("account", {})
+    order_id = account.get("order_id")
     amount = params.get("amount")
+
+    # Проверка order_id
+    if not order_id or not any(order_id.startswith(key) for key in COURSES):
+        return jsonify({"id": _id, "error": {"code": -31050, "message": {
+            "ru": "Неверный order_id",
+            "uz": "Noto‘g‘ri order_id",
+            "en": "Invalid order_id"}}})
+
+    course_key = order_id[:5]
+    expected_amount = COURSES[course_key] * 100
+    if amount != expected_amount:
+        return jsonify({"id": _id, "error": {"code": -31001, "message": {
+            "ru": "Сумма не совпадает",
+            "uz": "Summasi mos emas",
+            "en": "Amount mismatch"}}})
 
     if trans_id in transactions:
         return jsonify({"id": _id, "result": transactions[trans_id]})
@@ -136,6 +152,7 @@ def create_transaction(_id, params):
         "account": account
     }
     return jsonify({"id": _id, "result": transactions[trans_id]})
+
 
 def perform_transaction(_id, params):
     trans_id = params.get("id")
