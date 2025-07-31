@@ -78,43 +78,38 @@ def merchant_api():
             }
         })
 
-def check_perform_transaction(_id, params):
-    account = params.get("account", {})
-    order_id = account.get("order_id")
-    amount = params.get("amount")
+def check_transaction(_id, params):
+    trans_id = params.get("id")
+    transaction = transactions.get(trans_id)
 
-    if not order_id or not any(order_id.startswith(key) for key in COURSES):
-        return jsonify({"id": _id, "error": {"code": -31050, "message": {
-            "ru": "Неверный order_id",
-            "uz": "Noto‘g‘ri order_id",
-            "en": "Invalid order_id"}}})
+    if not transaction:
+        return jsonify({
+            "id": _id,
+            "error": {
+                "code": -31003,
+                "message": {
+                    "ru": "Транзакция не найдена",
+                    "uz": "Tranzaksiya topilmadi",
+                    "en": "Transaction not found"
+                }
+            }
+        })
 
-    course_key = order_id[:5]
-    expected_amount = COURSES[course_key] * 100
-    if amount != expected_amount:
-        return jsonify({"id": _id, "error": {"code": -31001, "message": {
-            "ru": "Сумма не совпадает",
-            "uz": "Summasi mos emas",
-            "en": "Amount mismatch"}}})
+    # Если статус еще не выполнен — вернуть ошибку
+    if transaction["state"] != 2:
+        return jsonify({
+            "id": _id,
+            "error": {
+                "code": -31003,
+                "message": {
+                    "ru": "Транзакция не подтверждена",
+                    "uz": "Tranzaksiya tasdiqlanmagan",
+                    "en": "Transaction not confirmed"
+                }
+            }
+        })
 
-    receipt_detail = {
-        "receipt_type": 0,
-        "items": [{
-            "title": {
-                "HRSTR": "HR стратегия",
-                "HRFIN": "HR финансы",
-                "HRANA": "HR аналитика",
-                "SENHR": "Senior HR"
-            }.get(course_key, "Курс TOP HR"),
-            "price": expected_amount,
-            "count": 1,
-            "code": "10899002001000000",
-            "vat_percent": 0,
-            "package_code": ""
-        }]
-    }
-
-    return jsonify({"id": _id, "result": {"allow": True, "detail": receipt_detail}})
+    return jsonify({"id": _id, "result": transaction})
 
 def create_transaction(_id, params):
     trans_id = params.get("id")
