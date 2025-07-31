@@ -147,3 +147,7 @@ def get_statement(_id, params):
         if from_time <= int(tx["create_time"]) <= to_time
     ]
     return jsonify({"id": _id, "result": filtered})
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)    
