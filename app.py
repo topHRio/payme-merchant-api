@@ -96,6 +96,16 @@ def check_perform_transaction(_id, params):
         return jsonify({"id": _id, "error": {"code": -31001, "message": {
             "ru": "Сумма не совпадает", "uz": "Summasi mos emas", "en": "Amount mismatch"}}})
 
+    # Проверка на уже занятый или завершённый счёт
+    for tx in transactions.values():
+        if tx["account"]["order_id"] == order_id:
+            if tx["state"] == 1:
+                return jsonify({"id": _id, "error": {"code": -31099, "message": {
+                    "ru": "Счёт занят", "uz": "Hisob band", "en": "Account already in use"}}})
+            elif tx["state"] in (2, -1):
+                return jsonify({"id": _id, "error": {"code": -31052, "message": {
+                    "ru": "Счёт завершён", "uz": "Hisob tugagan", "en": "Account closed"}}})
+
     receipt_detail = {
         "receipt_type": 0,
         "items": [{
@@ -136,14 +146,24 @@ def create_transaction(_id, params):
         return jsonify({"id": _id, "error": {"code": -31001, "message": {
             "ru": "Сумма не совпадает", "uz": "Summasi mos emas", "en": "Amount mismatch"}}})
 
-    # Проверка на уже существующую активную транзакцию с тем же order_id
-    for tx in transactions.values():
-        if tx["account"]["order_id"] == order_id and tx["state"] == 1:
-            return jsonify({"id": _id, "error": {"code": -31099, "message": {
-                "ru": "Счёт уже занят", "uz": "Hisob band qilingan", "en": "Transaction already exists for this account"}}})
-
     if trans_id in transactions:
         return jsonify({"id": _id, "result": {"transaction": trans_id, **transactions[trans_id]}})
+
+    # Проверка на уже активную транзакцию
+    for tx in transactions.values():
+        if tx["account"]["order_id"] == order_id and tx["state"] == 1:
+            transactions[trans_id] = {
+                "create_time": time,
+                "perform_time": 0,
+                "cancel_time": 0,
+                "id": trans_id,
+                "state": 1,
+                "reason": None,
+                "amount": amount,
+                "account": account
+            }
+            return jsonify({"id": _id, "error": {"code": -31099, "message": {
+                "ru": "Счёт уже занят", "uz": "Hisob band qilingan", "en": "Transaction already exists for this account"}}})
 
     transactions[trans_id] = {
         "create_time": time,
@@ -201,7 +221,7 @@ def check_transaction(_id, params):
         return jsonify({"id": _id, "error": {"code": -31003, "message": {
             "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
-    return jsonify({"id": _id, "result": transaction})
+    return jsonify({"id": _id, "result": {"transaction": trans_id, **transaction}})
 
 def get_statement(_id, params):
     from_time = params.get("from")
