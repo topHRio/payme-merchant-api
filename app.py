@@ -11,7 +11,7 @@ TEST_KEY = "MgQkrp%EmzazcRq5GWp#KxiTQgYu1@Ymrs87"
 COURSES = {
     "HRSTR": 3_000_000,
     "HRFIN": 3_000_000,
-    "HRANA":  3_000_000,
+    "HRANA": 3_000_000,
     "SENHR": 8_000_000
 }
 
@@ -35,7 +35,6 @@ def unauthorized():
 @app.route("/", methods=["POST"])
 def merchant_api():
     auth = request.headers.get("Authorization")
-
     if not auth or not auth.startswith("Basic "):
         return unauthorized()
 
@@ -83,19 +82,19 @@ def check_perform_transaction(_id, params):
     order_id = account.get("order_id")
     amount = params.get("amount")
 
-    if not order_id or not any(order_id.startswith(key) for key in COURSES):
+    if not order_id:
         return jsonify({"id": _id, "error": {"code": -31050, "message": {
-            "ru": "Неверный order_id",
-            "uz": "Noto‘g‘ri order_id",
-            "en": "Invalid order_id"}}})
+            "ru": "Отсутствует order_id", "uz": "Order_id yo'q", "en": "Missing order_id"}}})
 
-    course_key = order_id[:5]
+    course_key = order_id.split("-")[0]
+    if course_key not in COURSES:
+        return jsonify({"id": _id, "error": {"code": -31050, "message": {
+            "ru": "Неверный order_id", "uz": "Noto‘g‘ri order_id", "en": "Invalid order_id"}}})
+
     expected_amount = COURSES[course_key] * 100
     if amount != expected_amount:
         return jsonify({"id": _id, "error": {"code": -31001, "message": {
-            "ru": "Сумма не совпадает",
-            "uz": "Summasi mos emas",
-            "en": "Amount mismatch"}}})
+            "ru": "Сумма не совпадает", "uz": "Summasi mos emas", "en": "Amount mismatch"}}})
 
     receipt_detail = {
         "receipt_type": 0,
@@ -123,23 +122,28 @@ def create_transaction(_id, params):
     order_id = account.get("order_id")
     amount = params.get("amount")
 
-    # Проверка order_id
-    if not order_id or not any(order_id.startswith(key) for key in COURSES):
+    if not order_id:
         return jsonify({"id": _id, "error": {"code": -31050, "message": {
-            "ru": "Неверный order_id",
-            "uz": "Noto‘g‘ri order_id",
-            "en": "Invalid order_id"}}})
+            "ru": "Отсутствует order_id", "uz": "Order_id yo'q", "en": "Missing order_id"}}})
 
-    course_key = order_id[:5]
+    course_key = order_id.split("-")[0]
+    if course_key not in COURSES:
+        return jsonify({"id": _id, "error": {"code": -31050, "message": {
+            "ru": "Неверный order_id", "uz": "Noto‘g‘ri order_id", "en": "Invalid order_id"}}})
+
     expected_amount = COURSES[course_key] * 100
     if amount != expected_amount:
         return jsonify({"id": _id, "error": {"code": -31001, "message": {
-            "ru": "Сумма не совпадает",
-            "uz": "Summasi mos emas",
-            "en": "Amount mismatch"}}})
+            "ru": "Сумма не совпадает", "uz": "Summasi mos emas", "en": "Amount mismatch"}}})
+
+    # Проверка на уже существующую активную транзакцию с тем же order_id
+    for tx in transactions.values():
+        if tx["account"]["order_id"] == order_id and tx["state"] == 1:
+            return jsonify({"id": _id, "error": {"code": -31099, "message": {
+                "ru": "Счёт уже занят", "uz": "Hisob band qilingan", "en": "Transaction already exists for this account"}}})
 
     if trans_id in transactions:
-        return jsonify({"id": _id, "result": transactions[trans_id]})
+        return jsonify({"id": _id, "result": {"transaction": trans_id, **transactions[trans_id]}})
 
     transactions[trans_id] = {
         "create_time": time,
@@ -151,59 +155,28 @@ def create_transaction(_id, params):
         "amount": amount,
         "account": account
     }
-    return jsonify({"id": _id, "result": transactions[trans_id]})
+
+    return jsonify({"id": _id, "result": {"transaction": trans_id, **transactions[trans_id]}})
 
 def perform_transaction(_id, params):
     trans_id = params.get("id")
     transaction = transactions.get(trans_id)
 
     if not transaction:
-        return jsonify({
-            "id": _id,
-            "error": {
-                "code": -31003,
-                "message": {
-                    "ru": "Транзакция не найдена",
-                    "uz": "Tranzaksiya topilmadi",
-                    "en": "Transaction not found"
-                }
-            }
-        })
+        return jsonify({"id": _id, "error": {"code": -31003, "message": {
+            "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
-    # Если уже отменена
     if transaction["state"] == -1:
-        return jsonify({
-            "id": _id,
-            "error": {
-                "code": -31008,
-                "message": {
-                    "ru": "Транзакция отменена",
-                    "uz": "Tranzaksiya bekor qilingan",
-                    "en": "Transaction cancelled"
-                }
-            }
-        })
+        return jsonify({"id": _id, "error": {"code": -31008, "message": {
+            "ru": "Транзакция отменена", "uz": "Tranzaksiya bekor qilingan", "en": "Transaction cancelled"}}})
 
-    # Если уже выполнена
     if transaction["state"] == 2:
-        return jsonify({
-            "id": _id,
-            "result": {
-                "transaction": trans_id,
-                **transaction
-            }
-        })
+        return jsonify({"id": _id, "result": {"transaction": trans_id, **transaction}})
 
-    # Выполняем
     transaction["perform_time"] = get_now_timestamp()
     transaction["state"] = 2
-    return jsonify({
-        "id": _id,
-        "result": {
-            "transaction": trans_id,
-            **transaction
-        }
-    })
+
+    return jsonify({"id": _id, "result": {"transaction": trans_id, **transaction}})
 
 def cancel_transaction(_id, params):
     trans_id = params.get("id")
@@ -212,13 +185,12 @@ def cancel_transaction(_id, params):
 
     if not transaction:
         return jsonify({"id": _id, "error": {"code": -31003, "message": {
-            "ru": "Транзакция не найдена",
-            "uz": "Tranzaksiya topilmadi",
-            "en": "Transaction not found"}}})
+            "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
     transaction["cancel_time"] = get_now_timestamp()
     transaction["state"] = -1
     transaction["reason"] = reason
+
     return jsonify({"id": _id, "result": transaction})
 
 def check_transaction(_id, params):
@@ -227,9 +199,7 @@ def check_transaction(_id, params):
 
     if not transaction:
         return jsonify({"id": _id, "error": {"code": -31003, "message": {
-            "ru": "Транзакция не найдена",
-            "uz": "Tranzaksiya topilmadi",
-            "en": "Transaction not found"}}})
+            "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
     return jsonify({"id": _id, "result": transaction})
 
