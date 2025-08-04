@@ -181,20 +181,54 @@ def perform_transaction(_id, params):
     transaction = transactions.get(trans_id)
 
     if not transaction:
-        return jsonify({"id": _id, "error": {"code": -31003, "message": {
-            "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
+        return jsonify({
+            "id": _id,
+            "error": {
+                "code": -31003,
+                "message": {
+                    "ru": "Транзакция не найдена",
+                    "uz": "Tranzaksiya topilmadi",
+                    "en": "Transaction not found"
+                }
+            }
+        })
 
     if transaction["state"] == -1:
-        return jsonify({"id": _id, "error": {"code": -31008, "message": {
-            "ru": "Транзакция отменена", "uz": "Tranzaksiya bekor qilingan", "en": "Transaction cancelled"}}})
+        return jsonify({
+            "id": _id,
+            "error": {
+                "code": -31008,
+                "message": {
+                    "ru": "Транзакция отменена",
+                    "uz": "Tranzaksiya bekor qilingan",
+                    "en": "Transaction cancelled"
+                }
+            }
+        })
 
+    # если уже проведена — возвращаем короткий результат
     if transaction["state"] == 2:
-        return jsonify({"id": _id, "result": {"transaction": trans_id, **transaction}})
+        return jsonify({
+            "id": _id,
+            "result": {
+                "state": 2,
+                "perform_time": transaction["perform_time"],
+                "transaction": trans_id
+            }
+        })
 
+    # впервые проводим
     transaction["perform_time"] = get_now_timestamp()
     transaction["state"] = 2
 
-    return jsonify({"id": _id, "result": {"transaction": trans_id, **transaction}})
+    return jsonify({
+        "id": _id,
+        "result": {
+            "state": 2,
+            "perform_time": transaction["perform_time"],
+            "transaction": trans_id
+        }
+    })
 
 def cancel_transaction(_id, params):
     trans_id = params.get("id")
