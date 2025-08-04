@@ -16,6 +16,7 @@ COURSES = {
 }
 
 transactions = {}
+saved_create_results = {}  # <--- для хранения минимального ответа на CreateTransaction
 
 def get_now_timestamp():
     return int(datetime.datetime.now().timestamp() * 1000)
@@ -96,7 +97,6 @@ def check_perform_transaction(_id, params):
         return jsonify({"id": _id, "error": {"code": -31001, "message": {
             "ru": "Сумма не совпадает", "uz": "Summasi mos emas", "en": "Amount mismatch"}}})
 
-    # Проверка на уже занятый или завершённый счёт
     for tx in transactions.values():
         if tx["account"]["order_id"] == order_id:
             if tx["state"] == 1:
@@ -142,26 +142,15 @@ def create_transaction(_id, params):
             "ru": "Неверный order_id", "uz": "Noto‘g‘ri order_id", "en": "Invalid order_id"}}})
 
     expected_amount = COURSES[course_key] * 100
-    if amount != expected_amount:
+    if int(amount) != int(expected_amount):
         return jsonify({"id": _id, "error": {"code": -31001, "message": {
             "ru": "Сумма не совпадает", "uz": "Summasi mos emas", "en": "Amount mismatch"}}})
 
-    if trans_id in transactions:
-        return jsonify({"id": _id, "result": {"transaction": trans_id, **transactions[trans_id]}})
+    if trans_id in saved_create_results:
+        return jsonify(saved_create_results[trans_id])
 
-    # Проверка на уже активную транзакцию
     for tx in transactions.values():
         if tx["account"]["order_id"] == order_id and tx["state"] == 1:
-            transactions[trans_id] = {
-                "create_time": time,
-                "perform_time": 0,
-                "cancel_time": 0,
-                "id": trans_id,
-                "state": 1,
-                "reason": None,
-                "amount": amount,
-                "account": account
-            }
             return jsonify({"id": _id, "error": {"code": -31099, "message": {
                 "ru": "Счёт уже занят", "uz": "Hisob band qilingan", "en": "Transaction already exists for this account"}}})
 
@@ -176,7 +165,16 @@ def create_transaction(_id, params):
         "account": account
     }
 
-    return jsonify({"id": _id, "result": {"transaction": trans_id, **transactions[trans_id]}})
+    saved_create_results[trans_id] = {
+        "id": _id,
+        "result": {
+            "create_time": time,
+            "transaction": trans_id,
+            "state": 1
+        }
+    }
+
+    return jsonify(saved_create_results[trans_id])
 
 def perform_transaction(_id, params):
     trans_id = params.get("id")
