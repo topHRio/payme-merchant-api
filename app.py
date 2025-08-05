@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import base64
 import datetime
 import os
+import js
 
 app = Flask(__name__)
 
@@ -282,8 +283,13 @@ def get_statement(_id, params):
         tx for tx in transactions.values()
         if from_time <= int(tx["create_time"]) <= to_time
     ]
-    return jsonify({"id": _id, "result": filtered})
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    response_obj = {
+        "id": _id,
+        "result": filtered
+    }
+
+    return Response(
+        json.dumps(response_obj, separators=(",", ":")),
+        mimetype="application/json"
+    )
