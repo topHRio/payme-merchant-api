@@ -17,6 +17,7 @@ COURSES = {
 
 transactions = {}
 saved_create_results = {}  # <--- для хранения минимального ответа на CreateTransaction
+cancel_results = {}  # вверху, рядом с saved_create_results
 
 def get_now_timestamp():
     return int(datetime.datetime.now().timestamp() * 1000)
@@ -239,18 +240,25 @@ def cancel_transaction(_id, params):
         return jsonify({"id": _id, "error": {"code": -31003, "message": {
             "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
+    # Если уже отменяли — вернём тот же результат
+    if trans_id in cancel_results:
+        return jsonify(cancel_results[trans_id])
+
+    # отменяем
     transaction["cancel_time"] = get_now_timestamp()
     transaction["state"] = -1
     transaction["reason"] = reason
 
-    return jsonify({
-        "id": _id,
+    response = {
         "result": {
             "transaction": trans_id,
             "cancel_time": transaction["cancel_time"],
             "state": transaction["state"]
         }
-    })
+    }
+
+    cancel_results[trans_id] = response
+    return jsonify(response)
 
 def check_transaction(_id, params):
     trans_id = params.get("id")
