@@ -236,8 +236,9 @@ def cancel_transaction(_id, params):
     transaction = transactions.get(trans_id)
 
     if not transaction:
+        return jsonify({"id": _id, "error": {"code": -31003, "message": {
+            "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
         return jsonify({
-            # тут всё равно нужно вернуть ошибку с id (иначе песочница не примет вообще)
             "id": _id,
             "error": {
                 "code": -31003,
@@ -250,15 +251,18 @@ def cancel_transaction(_id, params):
         })
 
     transaction["cancel_time"] = get_now_timestamp()
+    transaction["state"] = -1
     transaction["reason"] = reason
 
+    return jsonify({"id": _id, "result": transaction})
+    # выбираем нужный код: -2 если ещё не выполнена, -1 если была
     if transaction["state"] == 2:
         transaction["state"] = -1
     else:
         transaction["state"] = -2
 
-    # Возвращаем только result, без id (нарушаем стандарт осознанно)
     return jsonify({
+        "id": _id,
         "result": {
             "transaction": trans_id,
             "state": transaction["state"],
