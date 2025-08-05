@@ -240,14 +240,18 @@ def cancel_transaction(_id, params):
         return jsonify({"id": _id, "error": {"code": -31003, "message": {
             "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
-    # Если уже отменяли — вернём тот же результат
     if trans_id in cancel_results:
         return jsonify(cancel_results[trans_id])
 
-    # отменяем
+    # ставим cancel_time
     transaction["cancel_time"] = get_now_timestamp()
-    transaction["state"] = -1
     transaction["reason"] = reason
+
+    # различаем -1 или -2
+    if transaction["state"] == 2:
+        transaction["state"] = -2
+    else:
+        transaction["state"] = -1
 
     response = {
         "result": {
