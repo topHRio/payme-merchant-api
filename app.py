@@ -280,7 +280,20 @@ def get_statement(_id, params):
     to_time = params.get("to")
 
     filtered = [
-        tx for tx in transactions.values()
+        {
+            "id": tx["id"],
+            "time": int(tx["create_time"]),
+            "amount": int(tx["amount"]),
+            "account": tx["account"],
+            "create_time": int(tx["create_time"]),
+            "perform_time": int(tx["perform_time"]),
+            "cancel_time": int(tx["cancel_time"]),
+            "transaction": tx["id"],
+            "state": int(tx["state"]),
+            "reason": tx["reason"],
+            "receivers": None
+        }
+        for tx in transactions.values()
         if from_time <= int(tx["create_time"]) <= to_time
     ]
 
@@ -291,7 +304,8 @@ def get_statement(_id, params):
 
     return Response(
         json.dumps(response_obj, separators=(",", ":")),
-        mimetype="application/json"
+        status=200,
+        content_type="application/json"
     )
 
 if __name__ == "__main__":
