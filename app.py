@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, Response
 import base64
 import datetime
 import os
-import js
+import json
 
 app = Flask(__name__)
 
