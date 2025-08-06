@@ -299,7 +299,9 @@ def get_statement(_id, params):
 
     response_obj = {
         "id": _id,
-        "result": filtered
+        "result": {
+            "transactions": filtered
+        }
     }
 
     return Response(
