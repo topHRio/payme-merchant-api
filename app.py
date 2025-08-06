@@ -3,6 +3,7 @@ import base64
 import datetime
 import os
 import json
+import pytz  
 
 app = Flask(__name__)
 
@@ -17,11 +18,13 @@ COURSES = {
 }
 
 transactions = {}
-saved_create_results = {}  # <--- для хранения минимального ответа на CreateTransaction
-cancel_results = {}  # вверху, рядом с saved_create_results
+saved_create_results = {}
+cancel_results = {}
 
 def get_now_timestamp():
-    return int(datetime.datetime.now().timestamp() * 1000)
+    tz = pytz.timezone("Asia/Tashkent")
+    now = datetime.datetime.now(tz)
+    return int(now.timestamp() * 1000)
 
 def unauthorized():
     return jsonify({
@@ -121,7 +124,7 @@ def check_perform_transaction(_id, params):
             "count": 1,
             "code": "10899002001000000",
             "vat_percent": 0,
-            "package_code": ""
+            "package_code": "1165336"
         }]
     }
 
@@ -183,54 +186,28 @@ def perform_transaction(_id, params):
     transaction = transactions.get(trans_id)
 
     if not transaction:
-        return jsonify({
-            "id": _id,
-            "error": {
-                "code": -31003,
-                "message": {
-                    "ru": "Транзакция не найдена",
-                    "uz": "Tranzaksiya topilmadi",
-                    "en": "Transaction not found"
-                }
-            }
-        })
+        return jsonify({"id": _id, "error": {"code": -31003, "message": {
+            "ru": "Транзакция не найдена", "uz": "Tranzaksiya topilmadi", "en": "Transaction not found"}}})
 
     if transaction["state"] == -1:
-        return jsonify({
-            "id": _id,
-            "error": {
-                "code": -31008,
-                "message": {
-                    "ru": "Транзакция отменена",
-                    "uz": "Tranzaksiya bekor qilingan",
-                    "en": "Transaction cancelled"
-                }
-            }
-        })
+        return jsonify({"id": _id, "error": {"code": -31008, "message": {
+            "ru": "Транзакция отменена", "uz": "Tranzaksiya bekor qilingan", "en": "Transaction cancelled"}}})
 
-    # если уже проведена — возвращаем короткий результат
     if transaction["state"] == 2:
-        return jsonify({
-            "id": _id,
-            "result": {
-                "state": 2,
-                "perform_time": transaction["perform_time"],
-                "transaction": trans_id
-            }
-        })
-
-    # впервые проводим
-    transaction["perform_time"] = get_now_timestamp()
-    transaction["state"] = 2
-
-    return jsonify({
-        "id": _id,
-        "result": {
+        return jsonify({"id": _id, "result": {
             "state": 2,
             "perform_time": transaction["perform_time"],
             "transaction": trans_id
-        }
-    })
+        }})
+
+    transaction["perform_time"] = get_now_timestamp()
+    transaction["state"] = 2
+
+    return jsonify({"id": _id, "result": {
+        "state": 2,
+        "perform_time": transaction["perform_time"],
+        "transaction": trans_id
+    }})
 
 def cancel_transaction(_id, params):
     trans_id = params.get("id")
@@ -244,15 +221,10 @@ def cancel_transaction(_id, params):
     if trans_id in cancel_results:
         return jsonify(cancel_results[trans_id])
 
-    # ставим cancel_time
     transaction["cancel_time"] = get_now_timestamp()
     transaction["reason"] = reason
 
-    # различаем -1 или -2
-    if transaction["state"] == 2:
-        transaction["state"] = -2
-    else:
-        transaction["state"] = -1
+    transaction["state"] = -2 if transaction["state"] == 2 else -1
 
     response = {
         "result": {
@@ -297,15 +269,8 @@ def get_statement(_id, params):
         if from_time <= int(tx["create_time"]) <= to_time
     ]
 
-    response_obj = {
-        "id": _id,
-        "result": {
-            "transactions": filtered
-        }
-    }
-
     return Response(
-        json.dumps(response_obj, separators=(",", ":")),
+        json.dumps({"id": _id, "result": {"transactions": filtered}}, separators=(",", ":")),
         status=200,
         content_type="application/json"
     )
